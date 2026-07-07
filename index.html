@@ -160,6 +160,15 @@
     </div>
   </div>
   <div class="field">
+    <label class="title">開始時間</label>
+    <select id="fOpenTime">
+      <option value="">全ての時間</option>
+      <option value="1">午前スタート</option>
+      <option value="2">午後スタート</option>
+      <option value="3">18時以降スタート</option>
+    </select>
+  </div>
+  <div class="field">
     <label class="title">イベント種類（未選択 = すべて）</label>
     <div class="checks" id="fTypes">
       <label><input type="checkbox" value="3:1">チャンピオンズリーグ</label>
@@ -303,6 +312,8 @@ function buildQuery() {
   const e = document.getElementById("fEnd").value;
   if (s) p.set("start_date", s.replaceAll("-", "/"));
   if (e) p.set("end_date", e.replaceAll("-", "/"));
+  const ot = document.getElementById("fOpenTime").value;
+  if (ot) p.set("event_open_time", ot);
   document.querySelectorAll("#fTypes input:checked").forEach((cb) => {
     cb.value.split(",").forEach((v) => p.append("event_type[]", v));
   });
