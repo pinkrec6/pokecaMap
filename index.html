@@ -258,11 +258,10 @@ function init() {
     sel.appendChild(o);
   });
 
-  // 期間デフォルト: 今日〜7日後
+  // 期間デフォルト: 今日〜今日
   const today = new Date();
-  const week = new Date(today.getTime() + 7 * 86400000);
   document.getElementById("fStart").value = toDateInput(today);
-  document.getElementById("fEnd").value = toDateInput(week);
+  document.getElementById("fEnd").value = toDateInput(today);
 
   // パネル開閉
   const overlay = document.getElementById("overlay");
