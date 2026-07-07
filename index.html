@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ポケカイベントマップ</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<style>
+  :root {
+    --primary: #e3350d;
+    --primary-dark: #b52a0a;
+    --bg: #ffffff;
+    --text: #222;
+    --muted: #777;
+    --border: #ddd;
+    --header-h: 52px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif; color: var(--text); overscroll-behavior: none; }
+
+  /* ---------- header ---------- */
+  header {
+    position: fixed; top: 0; left: 0; right: 0; height: var(--header-h);
+    background: var(--primary); color: #fff; z-index: 1200;
+    display: flex; align-items: center; gap: 8px; padding: 0 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  }
+  header h1 { font-size: 16px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header button {
+    background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.5);
+    border-radius: 6px; padding: 7px 10px; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  header button:active { background: rgba(255,255,255,.3); }
+
+  #map { position: fixed; top: var(--header-h); bottom: 0; left: 0; right: 0; }
+
+  /* ---------- status bar ---------- */
+  #statusBar {
+    position: fixed; top: calc(var(--header-h) + 8px); left: 50%; transform: translateX(-50%);
+    z-index: 1100; background: rgba(255,255,255,.95); border-radius: 20px;
+    padding: 6px 14px; font-size: 12px; box-shadow: 0 1px 6px rgba(0,0,0,.25);
+    display: flex; align-items: center; gap: 8px; max-width: 94vw; white-space: nowrap;
+  }
+  #statusBar .spinner {
+    width: 13px; height: 13px; border: 2px solid #ccc; border-top-color: var(--primary);
+    border-radius: 50%; animation: spin .8s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loadMoreBtn {
+    background: var(--primary); color: #fff; border: none; border-radius: 14px;
+    padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+
+  /* ---------- filter panel ---------- */
+  #filterPanel {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1300;
+    background: var(--bg); border-radius: 16px 16px 0 0;
+    box-shadow: 0 -2px 16px rgba(0,0,0,.3);
+    max-height: 80vh; overflow-y: auto; padding: 16px;
+    transform: translateY(110%); transition: transform .25s ease;
+  }
+  #filterPanel.open { transform: translateY(0); }
+  #filterPanel h2 { font-size: 15px; margin-bottom: 12px; }
+  .field { margin-bottom: 14px; }
+  .field label.title { display: block; font-size: 12px; font-weight: bold; color: var(--muted); margin-bottom: 5px; }
+  .field input[type=text], .field input[type=date], .field select {
+    width: 100%; padding: 9px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; background: #fff;
+  }
+  .dateRow { display: flex; gap: 8px; align-items: center; }
+  .dateRow input { flex: 1; min-width: 0; }
+  .checks { display: flex; flex-wrap: wrap; gap: 6px; }
+  .checks label {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 16px; padding: 6px 10px; cursor: pointer; user-select: none;
+  }
+  .checks label:has(input:checked) { background: #fdeae5; border-color: var(--primary); color: var(--primary-dark); }
+  .panelBtns { display: flex; gap: 10px; margin-top: 6px; padding-bottom: env(safe-area-inset-bottom); }
+  .panelBtns button { flex: 1; padding: 12px; border-radius: 10px; font-size: 15px; border: none; cursor: pointer; }
+  #searchBtn { background: var(--primary); color: #fff; font-weight: bold; }
+  #closePanelBtn { background: #eee; }
+
+  #overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1250;
+    opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  #overlay.show { opacity: 1; pointer-events: auto; }
+
+  /* ---------- list drawer ---------- */
+  #listPanel {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1300;
+    background: var(--bg); border-radius: 16px 16px 0 0;
+    box-shadow: 0 -2px 16px rgba(0,0,0,.3);
+    height: 70vh; display: flex; flex-direction: column;
+    transform: translateY(110%); transition: transform .25s ease;
+  }
+  #listPanel.open { transform: translateY(0); }
+  #listPanel .listHead { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+  #listPanel .listHead span { flex: 1; font-size: 14px; font-weight: bold; }
+  #listPanel .listHead button { background: #eee; border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  #listBody { overflow-y: auto; flex: 1; padding-bottom: env(safe-area-inset-bottom); }
+  .evCard { padding: 10px 16px; border-bottom: 1px solid #eee; cursor: pointer; }
+  .evCard:active { background: #fdf3f1; }
+  .evCard .evDate { font-size: 12px; color: var(--primary-dark); font-weight: bold; }
+  .evCard .evTitle { font-size: 14px; font-weight: bold; margin: 2px 0; }
+  .evCard .evShop { font-size: 12px; color: var(--muted); }
+  .badge { display: inline-block; font-size: 10px; border-radius: 4px; padding: 1px 5px; margin-left: 5px; vertical-align: 1px; color: #fff; }
+  .badge.full { background: #c0392b; }
+  .badge.cancel { background: #555; }
+  .badge.league { background: #2980b9; }
+
+  /* ---------- popup ---------- */
+  .leaflet-popup-content { margin: 12px 14px; font-size: 13px; max-height: 46vh; overflow-y: auto; }
+  .leaflet-popup-content-wrapper { border-radius: 10px; }
+  .pShop { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
+  .pAddr { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .pAddr a { color: #2980b9; }
+  .pEv { border-top: 1px solid #eee; padding: 7px 0; }
+  .pEv .d { font-size: 11px; color: var(--primary-dark); font-weight: bold; }
+  .pEv .t { font-weight: bold; margin: 1px 0; }
+  .pEv .m { font-size: 11px; color: var(--muted); }
+  .pEv a { color: var(--primary); font-size: 12px; }
+  .pMore { font-size: 11px; color: var(--muted); padding-top: 6px; }
+
+  .locateBtn {
+    background: #fff; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    font-size: 18px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🗺️ ポケカイベントマップ</h1>
+  <button id="openListBtn">📋 リスト</button>
+  <button id="openFilterBtn">🔍 絞り込み</button>
+</header>
+
+<div id="map"></div>
+
+<div id="statusBar"><span id="statusText">読み込み中…</span></div>
+
+<div id="overlay"></div>
+
+<div id="filterPanel">
+  <h2>イベントを絞り込み</h2>
+  <div class="field">
+    <label class="title">キーワード（イベント名・店舗名など）</label>
+    <input type="text" id="fKeyword" placeholder="例: シールド戦">
+  </div>
+  <div class="field">
+    <label class="title">都道府県</label>
+    <select id="fPref"><option value="">全国</option></select>
+  </div>
+  <div class="field">
+    <label class="title">開催期間</label>
+    <div class="dateRow">
+      <input type="date" id="fStart"> 〜 <input type="date" id="fEnd">
+    </div>
+  </div>
+  <div class="field">
+    <label class="title">イベント種類（未選択 = すべて）</label>
+    <div class="checks" id="fTypes">
+      <label><input type="checkbox" value="3:1">チャンピオンズリーグ</label>
+      <label><input type="checkbox" value="3:2">シティリーグ</label>
+      <label><input type="checkbox" value="3:3">トレーナーズリーグ</label>
+      <label><input type="checkbox" value="3:4">ジムイベント</label>
+      <label><input type="checkbox" value="3:6">オーガナイザーイベント</label>
+      <label><input type="checkbox" value="3:7">その他のイベント</label>
+      <label><input type="checkbox" value="1:4,1:6,1:7,2:4,2:6,2:7">体験・はじめて向け</label>
+    </div>
+  </div>
+  <div class="panelBtns">
+    <button id="closePanelBtn">閉じる</button>
+    <button id="searchBtn">この条件で検索</button>
+  </div>
+</div>
+
+<div id="listPanel">
+  <div class="listHead"><span id="listCount">イベント一覧</span><button id="closeListBtn">閉じる</button></div>
+  <div id="listBody"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+"use strict";
+
+/* ================= 設定 ================= */
+const API = "https://players.pokemon-card.com/event_search";
+const GEOCODE_API = "https://msearch.gsi.go.jp/address-search/AddressSearch?q=";
+const PAGE_SIZE = 100;          // 1リクエストあたりの取得件数
+const BATCH_PAGES = 3;          // 「検索」「さらに読み込む」1回で取得するページ数 (=300件)
+const GEO_CONCURRENCY = 5;      // ジオコーディング同時実行数
+
+const PREFS = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+
+/* ================= 状態 ================= */
+let map, cluster, userMarker;
+let events = [];                // 取得済みイベント
+let venues = new Map();         // address -> {name, address, latlng, events[], marker}
+let totalCount = 0;
+let loadedOffset = 0;
+let loading = false;
+let currentQueryBase = null;
+let didFitBounds = false;
+
+/* ================= ジオコーディングキャッシュ ================= */
+const CACHE_KEY = "pokecamap_geo_v1";
+let geoCache = {};
+try { geoCache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); } catch (e) {}
+let cacheDirty = false;
+setInterval(() => {
+  if (!cacheDirty) return;
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(geoCache)); cacheDirty = false; } catch (e) {}
+}, 3000);
+
+/* ================= 初期化 ================= */
+function init() {
+  map = L.map("map", { zoomControl: false }).setView([36.5, 137.8], 5);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | 出典: <a href="https://players.pokemon-card.com/" target="_blank">ポケモンカードゲーム プレイヤーズクラブ</a>'
+  }).addTo(map);
+  L.control.zoom({ position: "bottomright" }).addTo(map);
+
+  // 現在地ボタン
+  const LocateControl = L.Control.extend({
+    onAdd() {
+      const btn = L.DomUtil.create("div", "locateBtn leaflet-bar");
+      btn.innerHTML = "📍";
+      btn.title = "現在地へ移動";
+      L.DomEvent.on(btn, "click", (e) => { L.DomEvent.stop(e); locateMe(); });
+      return btn;
+    }
+  });
+  new LocateControl({ position: "bottomright" }).addTo(map);
+
+  cluster = L.markerClusterGroup({ maxClusterRadius: 45, showCoverageOnHover: false });
+  map.addLayer(cluster);
+
+  // 都道府県セレクト
+  const sel = document.getElementById("fPref");
+  PREFS.forEach((name, i) => {
+    const o = document.createElement("option");
+    o.value = String(i + 1);
+    o.textContent = name;
+    sel.appendChild(o);
+  });
+
+  // 期間デフォルト: 今日〜7日後
+  const today = new Date();
+  const week = new Date(today.getTime() + 7 * 86400000);
+  document.getElementById("fStart").value = toDateInput(today);
+  document.getElementById("fEnd").value = toDateInput(week);
+
+  // パネル開閉
+  const overlay = document.getElementById("overlay");
+  const filterPanel = document.getElementById("filterPanel");
+  const listPanel = document.getElementById("listPanel");
+  const closeAll = () => {
+    filterPanel.classList.remove("open");
+    listPanel.classList.remove("open");
+    overlay.classList.remove("show");
+  };
+  document.getElementById("openFilterBtn").onclick = () => { closeAll(); filterPanel.classList.add("open"); overlay.classList.add("show"); };
+  document.getElementById("openListBtn").onclick = () => { closeAll(); renderList(); listPanel.classList.add("open"); overlay.classList.add("show"); };
+  document.getElementById("closePanelBtn").onclick = closeAll;
+  document.getElementById("closeListBtn").onclick = closeAll;
+  overlay.onclick = closeAll;
+  document.getElementById("searchBtn").onclick = () => { closeAll(); startSearch(); };
+
+  startSearch();
+}
+
+function toDateInput(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function locateMe() {
+  if (!navigator.geolocation) { alert("この端末では現在地を取得できません"); return; }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const ll = [pos.coords.latitude, pos.coords.longitude];
+      if (userMarker) map.removeLayer(userMarker);
+      userMarker = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 2, fillColor: "#2980b9", fillOpacity: 1 }).addTo(map);
+      map.setView(ll, 12);
+    },
+    () => alert("現在地を取得できませんでした（HTTPS接続でない場合、位置情報は使えないことがあります）")
+  );
+}
+
+/* ================= 検索 ================= */
+function buildQuery() {
+  const p = new URLSearchParams();
+  p.set("order", "1");
+  const kw = document.getElementById("fKeyword").value.trim();
+  if (kw) p.set("keyword", kw);
+  const pref = document.getElementById("fPref").value;
+  if (pref) p.append("prefecture[]", pref);
+  const s = document.getElementById("fStart").value;
+  const e = document.getElementById("fEnd").value;
+  if (s) p.set("start_date", s.replaceAll("-", "/"));
+  if (e) p.set("end_date", e.replaceAll("-", "/"));
+  document.querySelectorAll("#fTypes input:checked").forEach((cb) => {
+    cb.value.split(",").forEach((v) => p.append("event_type[]", v));
+  });
+  return p;
+}
+
+async function startSearch() {
+  if (loading) return;
+  events = [];
+  venues.forEach((v) => { if (v.marker) cluster.removeLayer(v.marker); });
+  venues = new Map();
+  cluster.clearLayers();
+  totalCount = 0;
+  loadedOffset = 0;
+  didFitBounds = false;
+  currentQueryBase = buildQuery();
+  await loadBatch(true);
+}
+
+async function loadBatch(isFirst) {
+  loading = true;
+  try {
+    for (let i = 0; i < BATCH_PAGES; i++) {
+      if (!isFirst && loadedOffset >= totalCount) break;
+      setStatus(true, `イベント取得中… (${loadedOffset}件)`);
+      const p = new URLSearchParams(currentQueryBase);
+      p.set("offset", String(loadedOffset));
+      p.set("limit", String(PAGE_SIZE));
+      const res = await fetch(API + "?" + p.toString());
+      if (!res.ok) throw new Error("API error " + res.status);
+      const data = await res.json();
+      totalCount = data.eventCount || 0;
+      const evs = data.event || [];
+      events.push(...evs);
+      loadedOffset += evs.length;
+      addToVenues(evs);
+      if (evs.length < PAGE_SIZE || loadedOffset >= totalCount) break;
+      isFirst = false;
+    }
+    setStatus(true, "地図に配置中…");
+    await geocodeAll();
+    if (!didFitBounds && venues.size > 0) {
+      const b = cluster.getBounds();
+      if (b.isValid()) { map.fitBounds(b, { padding: [30, 30], maxZoom: 12 }); didFitBounds = true; }
+    }
+  } catch (err) {
+    console.error(err);
+    alert("イベントの取得に失敗しました: " + err.message);
+  } finally {
+    loading = false;
+    updateStatus();
+  }
+}
+
+function addToVenues(evs) {
+  for (const ev of evs) {
+    const key = (ev.address || "").trim();
+    if (!key) continue;
+    if (!venues.has(key)) {
+      venues.set(key, { name: ev.shop_name || ev.venue || "会場", address: key, latlng: null, events: [], marker: null });
+    }
+    venues.get(key).events.push(ev);
+  }
+}
+
+/* ================= ジオコーディング ================= */
+async function geocodeAll() {
+  const targets = [...venues.values()].filter((v) => !v.latlng && !v.failed);
+  let done = 0;
+  const queue = [...targets];
+  async function worker() {
+    while (queue.length) {
+      const v = queue.shift();
+      const ll = await geocode(v.address);
+      done++;
+      if (done % 5 === 0 || queue.length === 0) {
+        setStatus(true, `位置を特定中… (${done}/${targets.length}件)`);
+      }
+      if (ll) {
+        v.latlng = ll;
+        placeMarker(v);
+      } else {
+        v.failed = true;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: GEO_CONCURRENCY }, worker));
+}
+
+async function geocode(address) {
+  if (geoCache[address] !== undefined) {
+    return geoCache[address] === null ? null : geoCache[address];
+  }
+  let ll = await gsiSearch(address);
+  if (!ll) {
+    // ビル名などを除いた「〜番地」までで再試行
+    const m = address.match(/^(.*?\d[\d\-ー－]*)/);
+    if (m && m[1] !== address) ll = await gsiSearch(m[1]);
+  }
+  geoCache[address] = ll; // null（失敗）もキャッシュ
+  cacheDirty = true;
+  return ll;
+}
+
+async function gsiSearch(q) {
+  try {
+    const res = await fetch(GEOCODE_API + encodeURIComponent(q));
+    if (!res.ok) return null;
+    const arr = await res.json();
+    if (Array.isArray(arr) && arr.length > 0) {
+      const c = arr[0].geometry.coordinates;
+      return [c[1], c[0]]; // [lat, lng]
+    }
+  } catch (e) {}
+  return null;
+}
+
+/* ================= マーカー / ポップアップ ================= */
+function placeMarker(v) {
+  const m = L.marker(v.latlng, { title: v.name });
+  m.bindPopup(() => popupHtml(v), { maxWidth: 300, minWidth: 240 });
+  v.marker = m;
+  cluster.addLayer(m);
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function detailUrl(ev) {
+  return `https://players.pokemon-card.com/event/detail/${ev.event_holding_id}/${ev.trainers_flg}/${ev.shop_id}/${ev.event_date_params}/${ev.date_id}`;
+}
+
+function badges(ev) {
+  let h = "";
+  if (ev.cancelFlg) h += '<span class="badge cancel">中止</span>';
+  else if (ev.fullOccupiedFlg) h += '<span class="badge full">満員</span>';
+  if (ev.leagueName && ev.leagueName !== "その他") h += `<span class="badge league">${esc(ev.leagueName)}</span>`;
+  return h;
+}
+
+function popupHtml(v) {
+  const gmap = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v.address)}`;
+  const MAX = 8;
+  let h = `<div class="pShop">${esc(v.name)}</div>` +
+          `<div class="pAddr">${esc(v.address)}<br><a href="${gmap}" target="_blank" rel="noopener">Googleマップで開く</a></div>`;
+  const list = [...v.events].sort((a, b) => (a.event_date_params + a.event_started_at).localeCompare(b.event_date_params + b.event_started_at));
+  for (const ev of list.slice(0, MAX)) {
+    h += `<div class="pEv">
+      <div class="d">${esc(ev.event_date)}(${esc(ev.event_date_week)}) ${esc(ev.event_started_at)}〜${esc(ev.event_ended_at)}${badges(ev)}</div>
+      <div class="t">${esc(ev.event_title)}</div>
+      <div class="m">参加費: ${esc(ev.entry_fee || "-")} / 定員: ${esc(ev.capacity ?? "-")}人</div>
+      <a href="${detailUrl(ev)}" target="_blank" rel="noopener">公式ページで詳細を見る →</a>
+    </div>`;
+  }
+  if (list.length > MAX) h += `<div class="pMore">ほか ${list.length - MAX} 件のイベントがあります（公式ページ参照）</div>`;
+  return h;
+}
+
+/* ================= リスト表示 ================= */
+function renderList() {
+  const body = document.getElementById("listBody");
+  const sorted = [...events].sort((a, b) => (a.event_date_params + a.event_started_at).localeCompare(b.event_date_params + b.event_started_at));
+  document.getElementById("listCount").textContent = `イベント一覧（${sorted.length}件読込済）`;
+  body.innerHTML = "";
+  const frag = document.createDocumentFragment();
+  for (const ev of sorted) {
+    const card = document.createElement("div");
+    card.className = "evCard";
+    card.innerHTML = `
+      <div class="evDate">${esc(ev.event_date)}(${esc(ev.event_date_week)}) ${esc(ev.event_started_at)}〜${badges(ev)}</div>
+      <div class="evTitle">${esc(ev.event_title)}</div>
+      <div class="evShop">${esc(ev.shop_name || "")}｜${esc(ev.prefecture_name || "")} ${esc(ev.address || "")}</div>`;
+    card.onclick = () => {
+      const v = venues.get((ev.address || "").trim());
+      document.getElementById("listPanel").classList.remove("open");
+      document.getElementById("overlay").classList.remove("show");
+      if (v && v.latlng) {
+        map.setView(v.latlng, 15);
+        if (v.marker) setTimeout(() => v.marker.openPopup(), 300);
+      } else {
+        window.open(detailUrl(ev), "_blank");
+      }
+    };
+    frag.appendChild(card);
+  }
+  body.appendChild(frag);
+}
+
+/* ================= ステータス表示 ================= */
+function setStatus(spin, text) {
+  const bar = document.getElementById("statusBar");
+  bar.innerHTML = (spin ? '<span class="spinner"></span>' : "") + `<span id="statusText">${esc(text)}</span>`;
+}
+
+function updateStatus() {
+  const bar = document.getElementById("statusBar");
+  const placed = [...venues.values()].filter((v) => v.latlng).length;
+  let h = `<span>${totalCount}件中 ${loadedOffset}件読込 / ${placed}会場を表示</span>`;
+  if (loadedOffset < totalCount) {
+    h += `<button id="loadMoreBtn">さらに読み込む</button>`;
+  }
+  bar.innerHTML = h;
+  const btn = document.getElementById("loadMoreBtn");
+  if (btn) btn.onclick = () => loadBatch(false);
+}
+
+init();
+</script>
+</body>
+</html>
