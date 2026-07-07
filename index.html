@@ -263,6 +263,13 @@ function init() {
   document.getElementById("fStart").value = toDateInput(today);
   document.getElementById("fEnd").value = toDateInput(today);
 
+  // From変更時、From > To になったら To を From に合わせる
+  document.getElementById("fStart").addEventListener("change", () => {
+    const start = document.getElementById("fStart").value;
+    const end = document.getElementById("fEnd");
+    if (start && end.value && start > end.value) end.value = start;
+  });
+
   // パネル開閉
   const overlay = document.getElementById("overlay");
   const filterPanel = document.getElementById("filterPanel");
